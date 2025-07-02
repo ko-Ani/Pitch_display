@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>麦克风音高检测与历史图表</title>
+    <title>麦克风音量和音高检测</title>
     <style>
         * {
             margin: 0;
@@ -13,7 +13,7 @@
         }
         
         body {
-            background: linear-gradient(135deg, #1a1a2e, #16213e, #0f3460);
+            background: linear-gradient(135deg, #1a2a6c, #b21f1f, #1a2a6c);
             color: #fff;
             min-height: 100vh;
             display: flex;
@@ -191,26 +191,21 @@
             color: #ffc107;
         }
         
-        .history-chart-container {
-            position: relative;
+        .meter {
             width: 100%;
-            height: 250px;
-            background: rgba(0, 0, 0, 0.3);
-            border-radius: 10px;
-            padding: 10px;
-            margin-bottom: 25px;
+            height: 30px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 15px;
+            overflow: hidden;
+            margin-top: 10px;
         }
         
-        #historyChart {
-            width: 100%;
+        .meter-fill {
             height: 100%;
-        }
-        
-        .chart-title {
-            text-align: center;
-            color: #9ec9ff;
-            font-size: 1.4rem;
-            margin-bottom: 15px;
+            background: linear-gradient(90deg, #00c9ff, #92fe9d);
+            border-radius: 15px;
+            width: 0%;
+            transition: width 0.1s;
         }
         
         .frequency-key {
@@ -303,10 +298,6 @@
                 height: 200px;
             }
             
-            .history-chart-container {
-                height: 200px;
-            }
-            
             .value {
                 font-size: 2.5rem;
             }
@@ -322,8 +313,8 @@
 <body>
     <div class="container">
         <header>
-            <h1>麦克风音高检测与历史图表</h1>
-            <p class="description">此工具使用Web Audio API实时分析麦克风输入的音高频率，显示对应的音符，并绘制音高随时间变化的折线图。</p>
+            <h1>麦克风音量和音高检测</h1>
+            <p class="description">此工具使用Web Audio API实时分析麦克风输入。它可显示当前音量、音高频率及对应的音符，并可视化音频波形。</p>
             
             <div class="permission-guide">
                 <h3>麦克风权限设置指南：</h3>
@@ -359,19 +350,18 @@
             </div>
         </div>
         
-        <div class="chart-title">音高历史图表 (最近60秒)</div>
-        <div class="history-chart-container">
-            <canvas id="historyChart"></canvas>
-        </div>
-        
         <div class="indicators">
             <div class="indicator">
-                <h3>当前音高频率</h3>
-                <div id="pitchDisplay" class="value">0 Hz</div>
+                <h3>当前音量</h3>
+                <div id="volumeDisplay" class="value">0 dB</div>
+                <div class="meter">
+                    <div id="volumeMeter" class="meter-fill"></div>
+                </div>
             </div>
             
             <div class="indicator">
-                <h3>对应音符</h3>
+                <h3>音高频率</h3>
+                <div id="pitchDisplay" class="value">0 Hz</div>
                 <div class="note">
                     <span id="noteDisplay">-</span>
                 </div>
@@ -437,7 +427,7 @@
         </div>
         
         <footer>
-            <p>使用 Web Audio API 实现 | 适用于现代浏览器 | 音高历史图表</p>
+            <p>使用 Web Audio API 实现 | 适用于现代浏览器</p>
         </footer>
     </div>
     
@@ -445,13 +435,14 @@
         // 获取DOM元素
         const micButton = document.getElementById('micButton');
         const waveCanvas = document.getElementById('waveCanvas');
+        const volumeDisplay = document.getElementById('volumeDisplay');
         const pitchDisplay = document.getElementById('pitchDisplay');
         const noteDisplay = document.getElementById('noteDisplay');
+        const volumeMeter = document.getElementById('volumeMeter');
         const errorDisplay = document.getElementById('errorDisplay');
         const micStatus = document.getElementById('micStatus');
         const micStatusText = document.getElementById('micStatusText');
         const placeholderText = document.getElementById('placeholderText');
-        const historyChartCtx = document.getElementById('historyChart').getContext('2d');
         
         let audioContext;
         let analyser;
@@ -459,9 +450,6 @@
         let canvasCtx;
         let buffer;
         let animationFrameId;
-        let pitchHistory = []; // 存储历史音高数据
-        const MAX_HISTORY = 300; // 存储的最大数据点数（约30秒数据，每秒10个点）
-        let chart;
         
         // 音符映射表
         const NOTES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
@@ -471,119 +459,6 @@
             canvasCtx = waveCanvas.getContext('2d');
             waveCanvas.width = waveCanvas.offsetWidth;
             waveCanvas.height = waveCanvas.offsetHeight;
-        }
-        
-        // 初始化音高图表
-        function initPitchChart() {
-            chart = new Chart(historyChartCtx, {
-                type: 'line',
-                data: {
-                    labels: [],
-                    datasets: [{
-                        label: '音高频率 (Hz)',
-                        data: [],
-                        borderColor: '#4facfe',
-                        backgroundColor: 'rgba(79, 172, 254, 0.1)',
-                        borderWidth: 2,
-                        pointRadius: 0,
-                        pointHoverRadius: 4,
-                        cubicInterpolationMode: 'monotonic',
-                        fill: true
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    scales: {
-                        x: {
-                            display: true,
-                            title: {
-                                display: true,
-                                text: '时间 (秒)',
-                                color: '#9ec9ff'
-                            },
-                            ticks: {
-                                color: '#9ec9ff',
-                                maxRotation: 0,
-                                autoSkip: true,
-                                maxTicksLimit: 6
-                            },
-                            grid: {
-                                color: 'rgba(255, 255, 255, 0.1)'
-                            }
-                        },
-                        y: {
-                            display: true,
-                            title: {
-                                display: true,
-                                text: '频率 (Hz)',
-                                color: '#9ec9ff'
-                            },
-                            min: 0,
-                            max: 1000,
-                            ticks: {
-                                color: '#9ec9ff',
-                                stepSize: 200
-                            },
-                            grid: {
-                                color: 'rgba(255, 255, 255, 0.1)'
-                            }
-                        }
-                    },
-                    plugins: {
-                        legend: {
-                            labels: {
-                                color: '#9ec9ff',
-                                font: {
-                                    size: 14
-                                }
-                            }
-                        },
-                        tooltip: {
-                            mode: 'index',
-                            intersect: false,
-                            callbacks: {
-                                title: function(context) {
-                                    return '时间: ' + context[0].parsed.x + '秒';
-                                },
-                                label: function(context) {
-                                    let freq = context.parsed.y;
-                                    return '频率: ' + freq.toFixed(2) + ' Hz';
-                                }
-                            }
-                        }
-                    },
-                    animation: {
-                        duration: 0
-                    }
-                }
-            });
-        }
-        
-        // 更新音高图表
-        function updatePitchChart(pitch) {
-            if (!chart || pitch === null) return;
-            
-            const now = Date.now();
-            const timeSec = now / 1000;
-            const formattedTime = timeSec.toFixed(1);
-            
-            // 添加到历史数据
-            pitchHistory.push({
-                x: timeSec,
-                y: pitch
-            });
-            
-            // 保持不超过最大记录数
-            if (pitchHistory.length > MAX_HISTORY) {
-                pitchHistory.shift();
-            }
-            
-            // 更新图表数据
-            chart.data.labels = pitchHistory.map((_, i) => (i / 10).toFixed(1));
-            chart.data.datasets[0].data = pitchHistory.map(point => point.y);
-            
-            chart.update();
         }
         
         // 绘制音频波形
@@ -699,6 +574,20 @@
             // 绘制波形
             drawWaveform(buffer);
             
+            // 计算音量（RMS）
+            let sum = 0;
+            for (let i = 0; i < buffer.length; i++) {
+                const value = (buffer[i] - 128) / 128;
+                sum += value * value;
+            }
+            
+            const rms = Math.sqrt(sum / buffer.length);
+            const db = Math.max(0, Math.round(20 * Math.log10(rms)));
+            
+            // 更新音量显示
+            volumeDisplay.textContent = `${db} dB`;
+            volumeMeter.style.width = `${Math.min(db, 100)}%`;
+            
             // 检测音高
             try {
                 // 获取浮动数组数据用于音高检测
@@ -716,9 +605,6 @@
                     // 获取并显示音符
                     const note = frequencyToNote(pitch);
                     noteDisplay.textContent = note ? note.full : '-';
-                    
-                    // 更新音高图表
-                    updatePitchChart(pitch);
                 }
             } catch (e) {
                 console.error("音高检测错误:", e);
@@ -851,11 +737,6 @@
                 // 初始化Canvas
                 initCanvas();
                 
-                // 初始化音高图表
-                if (!chart) {
-                    initPitchChart();
-                }
-                
                 // 连接麦克风输入
                 microphone = audioContext.createMediaStreamSource(stream);
                 microphone.connect(analyser);
@@ -905,14 +786,8 @@
                 micButton.addEventListener('click', toggleMicrophone);
             }
             
-            window.addEventListener('resize', () => {
-                initCanvas();
-                if (chart) {
-                    chart.resize();
-                }
-            });
+            window.addEventListener('resize', initCanvas);
         });
     </script>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </body>
 </html>

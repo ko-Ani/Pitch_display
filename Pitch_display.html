@@ -1,0 +1,476 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>麦克风音量和音高检测</title>
+    <script src="https://cdn.jsdelivr.net/npm/pitchfinder@2.1.2/dist/pitchfinder.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        
+        body {
+            background: linear-gradient(135deg, #1a2a6c, #b21f1f, #1a2a6c);
+            color: #fff;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 900px;
+            width: 100%;
+            background: rgba(0, 0, 0, 0.7);
+            border-radius: 15px;
+            box-shadow: 0 0 30px rgba(0, 0, 0, 0.5);
+            padding: 30px;
+            backdrop-filter: blur(10px);
+            margin-top: 20px;
+        }
+        
+        header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        
+        h1 {
+            font-size: 2.8rem;
+            margin-bottom: 10px;
+            background: linear-gradient(45deg, #4facfe, #00f2fe);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            text-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+        }
+        
+        .description {
+            font-size: 1.1rem;
+            line-height: 1.6;
+            color: #e0e0e0;
+            max-width: 700px;
+            margin: 0 auto;
+        }
+        
+        .controls {
+            margin: 25px 0;
+            text-align: center;
+        }
+        
+        #micButton {
+            background: linear-gradient(45deg, #007bff, #00b7ff);
+            color: white;
+            border: none;
+            padding: 14px 28px;
+            font-size: 1.2rem;
+            border-radius: 50px;
+            cursor: pointer;
+            transition: all 0.3s;
+            box-shadow: 0 4px 15px rgba(0, 123, 255, 0.4);
+        }
+        
+        #micButton:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 7px 20px rgba(0, 123, 255, 0.6);
+        }
+        
+        #micButton:disabled {
+            background: linear-gradient(45deg, #656e78, #8798a5);
+            cursor: not-allowed;
+        }
+        
+        .visualizer {
+            position: relative;
+            width: 100%;
+            height: 300px;
+            margin: 30px 0;
+        }
+        
+        #waveCanvas {
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 10px;
+            width: 100%;
+            height: 100%;
+        }
+        
+        .indicators {
+            display: flex;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 20px;
+            margin: 25px 0;
+        }
+        
+        .indicator {
+            flex: 1;
+            min-width: 250px;
+            background: rgba(255, 255, 255, 0.1);
+            padding: 20px;
+            border-radius: 10px;
+            text-align: center;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+        }
+        
+        .indicator h3 {
+            font-size: 1.3rem;
+            margin-bottom: 15px;
+            color: #9ec9ff;
+        }
+        
+        .value {
+            font-size: 3rem;
+            font-weight: bold;
+            margin: 15px 0;
+        }
+        
+        .note {
+            font-size: 2.5rem;
+            color: #ffc107;
+        }
+        
+        .meter {
+            width: 100%;
+            height: 30px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 15px;
+            overflow: hidden;
+            margin-top: 10px;
+        }
+        
+        .meter-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #00c9ff, #92fe9d);
+            border-radius: 15px;
+            width: 0%;
+            transition: width 0.1s;
+        }
+        
+        .frequency-key {
+            margin-top: 30px;
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 10px;
+            overflow: hidden;
+        }
+        
+        th {
+            background: linear-gradient(45deg, #007bff, #00b7ff);
+            padding: 12px;
+            text-align: center;
+        }
+        
+        td {
+            padding: 12px;
+            text-align: center;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        tr:nth-child(even) {
+            background: rgba(255, 255, 255, 0.05);
+        }
+        
+        tr:hover {
+            background: rgba(255, 255, 255, 0.1);
+        }
+        
+        footer {
+            margin-top: 30px;
+            text-align: center;
+            color: rgba(255, 255, 255, 0.6);
+            font-size: 0.9rem;
+        }
+        
+        @media (max-width: 768px) {
+            .container {
+                padding: 20px;
+            }
+            
+            h1 {
+                font-size: 2.2rem;
+            }
+            
+            .visualizer {
+                height: 200px;
+            }
+            
+            .value {
+                font-size: 2.5rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>麦克风音量和音高检测</h1>
+            <p class="description">此工具使用浏览器内置的Web Audio API实时分析麦克风输入。它可显示当前音量、音高频率及对应的音符，并可视化音频波形。</p>
+        </header>
+        
+        <div class="controls">
+            <button id="micButton">启动麦克风</button>
+        </div>
+        
+        <div class="visualizer">
+            <canvas id="waveCanvas"></canvas>
+        </div>
+        
+        <div class="indicators">
+            <div class="indicator">
+                <h3>当前音量</h3>
+                <div id="volumeDisplay" class="value">0 dB</div>
+                <div class="meter">
+                    <div id="volumeMeter" class="meter-fill"></div>
+                </div>
+            </div>
+            
+            <div class="indicator">
+                <h3>音高频率</h3>
+                <div id="pitchDisplay" class="value">0 Hz</div>
+                <div class="note">
+                    <span id="noteDisplay">-</span>
+                </div>
+            </div>
+        </div>
+        
+        <div class="frequency-key">
+            <h2>常见音高频率参考</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>音符</th>
+                        <th>频率 (Hz)</th>
+                        <th>音符</th>
+                        <th>频率 (Hz)</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>C4 (中央C)</td>
+                        <td>261.63</td>
+                        <td>G4</td>
+                        <td>392.00</td>
+                    </tr>
+                    <tr>
+                        <td>C#4/Db4</td>
+                        <td>277.18</td>
+                        <td>G#4/Ab4</td>
+                        <td>415.30</td>
+                    </tr>
+                    <tr>
+                        <td>D4</td>
+                        <td>293.66</td>
+                        <td>A4</td>
+                        <td>440.00</td>
+                    </tr>
+                    <tr>
+                        <td>D#4/Eb4</td>
+                        <td>311.13</td>
+                        <td>A#4/Bb4</td>
+                        <td>466.16</td>
+                    </tr>
+                    <tr>
+                        <td>E4</td>
+                        <td>329.63</td>
+                        <td>B4</td>
+                        <td>493.88</td>
+                    </tr>
+                    <tr>
+                        <td>F4</td>
+                        <td>349.23</td>
+                        <td>C5</td>
+                        <td>523.25</td>
+                    </tr>
+                    <tr>
+                        <td>F#4/Gb4</td>
+                        <td>369.99</td>
+                        <td>D5</td>
+                        <td>587.33</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+        
+        <footer>
+            <p>使用 Web Audio API 和 Pitchfinder.js 实现 | 适用于现代浏览器</p>
+        </footer>
+    </div>
+    
+    <script>
+        // 获取DOM元素
+        const micButton = document.getElementById('micButton');
+        const waveCanvas = document.getElementById('waveCanvas');
+        const volumeDisplay = document.getElementById('volumeDisplay');
+        const pitchDisplay = document.getElementById('pitchDisplay');
+        const noteDisplay = document.getElementById('noteDisplay');
+        const volumeMeter = document.getElementById('volumeMeter');
+        
+        let audioContext;
+        let analyser;
+        let microphone;
+        let javascriptNode;
+        let canvasCtx;
+        let detectingPitch = false;
+        let pitchDetector;
+        let buffer;
+        
+        // 音符映射表
+        const NOTES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+        
+        // 初始化Canvas
+        function initCanvas() {
+            canvasCtx = waveCanvas.getContext('2d');
+            waveCanvas.width = waveCanvas.offsetWidth;
+            waveCanvas.height = waveCanvas.offsetHeight;
+        }
+        
+        // 绘制音频波形
+        function drawWaveform(data) {
+            canvasCtx.clearRect(0, 0, waveCanvas.width, waveCanvas.height);
+            canvasCtx.lineWidth = 2;
+            canvasCtx.strokeStyle = '#00c9ff';
+            canvasCtx.beginPath();
+            
+            const sliceWidth = waveCanvas.width / buffer.length;
+            let x = 0;
+            
+            for (let i = 0; i < buffer.length; i++) {
+                const v = data[i] / 128.0;
+                const y = v * waveCanvas.height / 2;
+                
+                if (i === 0) {
+                    canvasCtx.moveTo(x, y);
+                } else {
+                    canvasCtx.lineTo(x, y);
+                }
+                
+                x += sliceWidth;
+            }
+            
+            canvasCtx.stroke();
+        }
+        
+        // 将频率转换为音符
+        function frequencyToNote(frequency) {
+            if (!frequency) return null;
+            
+            // 计算最接近的半音指数
+            const A4 = 440;
+            const noteIndex = Math.round(12 * Math.log2(frequency / A4)) + 69;
+            
+            if (noteIndex < 0 || noteIndex > 127) return null;
+            
+            // 计算音符名称和八度
+            const octave = Math.floor(noteIndex / 12) - 1;
+            const noteName = NOTES[noteIndex % 12];
+            
+            return {
+                name: noteName,
+                octave: octave,
+                full: `${noteName}${octave}`
+            };
+        }
+        
+        // 处理音频数据
+        function processAudio(event) {
+            if (!analyser) return;
+            
+            // 获取时间域数据
+            analyser.getByteTimeDomainData(buffer);
+            
+            // 绘制波形
+            drawWaveform(buffer);
+            
+            // 计算音量（RMS）
+            let sum = 0;
+            for (let i = 0; i < buffer.length; i++) {
+                const value = (buffer[i] - 128) / 128;
+                sum += value * value;
+            }
+            
+            const rms = Math.sqrt(sum / buffer.length);
+            const db = Math.max(0, Math.round(20 * Math.log10(rms)));
+            
+            // 更新音量显示
+            volumeDisplay.textContent = `${db} dB`;
+            volumeMeter.style.width = `${Math.min(db, 100)}%`;
+            
+            // 检测音高
+            if (detectingPitch) {
+                // 获取浮动数组数据用于音高检测
+                const floatBuffer = new Float32Array(buffer.length);
+                for (let i = 0; i < buffer.length; i++) {
+                    floatBuffer[i] = (buffer[i] - 128) / 128;
+                }
+                
+                const pitch = pitchDetector(floatBuffer);
+                
+                if (pitch) {
+                    // 更新音高显示
+                    pitchDisplay.textContent = `${pitch.toFixed(2)} Hz`;
+                    
+                    // 获取并显示音符
+                    const note = frequencyToNote(pitch);
+                    noteDisplay.textContent = note ? note.full : '-';
+                }
+            }
+            
+            // 继续处理音频
+            if (audioContext) {
+                requestAnimationFrame(() => processAudio(event));
+            }
+        }
+        
+        // 开始音频分析
+        async function startAudioAnalysis() {
+            try {
+                // 请求麦克风权限
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+                
+                // 更新按钮文本
+                micButton.textContent = '分析中...';
+                micButton.disabled = true;
+                
+                // 创建音频上下文
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                
+                // 创建音高检测器
+                pitchDetector = pitchfinder.YIN({ sampleRate: audioContext.sampleRate });
+                detectingPitch = true;
+                
+                // 创建分析节点
+                analyser = audioContext.createAnalyser();
+                analyser.fftSize = 2048;
+                buffer = new Uint8Array(analyser.fftSize);
+                
+                // 连接麦克风输入
+                microphone = audioContext.createMediaStreamSource(stream);
+                microphone.connect(analyser);
+                
+                // 开始处理音频
+                processAudio();
+                
+            } catch (err) {
+                console.error('无法访问麦克风:', err);
+                alert('无法访问麦克风。请确保您已授予麦克风访问权限并重新加载页面。');
+                micButton.textContent = '启动麦克风';
+                micButton.disabled = false;
+            }
+        }
+        
+        // 初始化页面
+        window.addEventListener('load', function() {
+            initCanvas();
+            micButton.addEventListener('click', startAudioAnalysis);
+            window.addEventListener('resize', initCanvas);
+        });
+    </script>
+</body>
+</html>

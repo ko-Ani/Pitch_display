@@ -4,7 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>麦克风音量和音高检测</title>
-    <script src="https://cdn.jsdelivr.net/npm/pitchfinder@2.1.2/dist/pitchfinder.min.js"></script>
     <style>
         * {
             margin: 0;
@@ -56,6 +55,31 @@
             margin: 0 auto;
         }
         
+        .permission-guide {
+            background: rgba(255, 0, 0, 0.2);
+            border: 1px solid rgba(255, 0, 0, 0.4);
+            border-radius: 10px;
+            padding: 15px;
+            margin: 20px auto;
+            max-width: 600px;
+            text-align: left;
+        }
+        
+        .permission-guide h3 {
+            color: #ff9e9e;
+            margin-bottom: 10px;
+        }
+        
+        .permission-guide ul {
+            padding-left: 20px;
+            margin-bottom: 10px;
+        }
+        
+        .permission-guide li {
+            margin-bottom: 8px;
+            line-height: 1.4;
+        }
+        
         .controls {
             margin: 25px 0;
             text-align: center;
@@ -71,6 +95,8 @@
             cursor: pointer;
             transition: all 0.3s;
             box-shadow: 0 4px 15px rgba(0, 123, 255, 0.4);
+            position: relative;
+            overflow: hidden;
         }
         
         #micButton:hover {
@@ -83,18 +109,51 @@
             cursor: not-allowed;
         }
         
+        #micButton:after {
+            content: '';
+            position: absolute;
+            top: -50%;
+            left: -60%;
+            width: 15px;
+            height: 200%;
+            background: rgba(255,255,255,0.3);
+            transform: rotate(25deg);
+            transition: all 0.8s;
+        }
+        
+        #micButton.enabled:after {
+            left: 120%;
+        }
+        
+        .visualizer-container {
+            position: relative;
+            width: 100%;
+            margin: 30px 0;
+        }
+        
         .visualizer {
             position: relative;
             width: 100%;
             height: 300px;
-            margin: 30px 0;
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 10px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
         }
         
         #waveCanvas {
-            background: rgba(0, 0, 0, 0.3);
             border-radius: 10px;
             width: 100%;
             height: 100%;
+        }
+        
+        .visualizer-placeholder {
+            text-align: center;
+            padding: 20px;
+            color: rgba(255,255,255,0.5);
+            font-style: italic;
         }
         
         .indicators {
@@ -188,6 +247,44 @@
             font-size: 0.9rem;
         }
         
+        .error-message {
+            background: rgba(255, 0, 0, 0.2);
+            border-radius: 8px;
+            padding: 15px;
+            margin: 15px auto;
+            max-width: 600px;
+            color: #ff9e9e;
+            display: none;
+        }
+        
+        .status-indicator {
+            display: inline-block;
+            width: 15px;
+            height: 15px;
+            border-radius: 50%;
+            background-color: #e74c3c;
+            margin-left: 10px;
+            vertical-align: middle;
+        }
+        
+        .status-indicator.active {
+            background-color: #2ecc71;
+            animation: pulse 1.5s infinite;
+        }
+        
+        @keyframes pulse {
+            0% { box-shadow: 0 0 0 0 rgba(46, 204, 113, 0.4); }
+            70% { box-shadow: 0 0 0 10px rgba(46, 204, 113, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(46, 204, 113, 0); }
+        }
+        
+        .mic-status {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            margin-top: 15px;
+        }
+        
         @media (max-width: 768px) {
             .container {
                 padding: 20px;
@@ -204,6 +301,12 @@
             .value {
                 font-size: 2.5rem;
             }
+            
+            .mic-status {
+                flex-direction: column;
+                align-items: center;
+                gap: 10px;
+            }
         }
     </style>
 </head>
@@ -211,15 +314,40 @@
     <div class="container">
         <header>
             <h1>麦克风音量和音高检测</h1>
-            <p class="description">此工具使用浏览器内置的Web Audio API实时分析麦克风输入。它可显示当前音量、音高频率及对应的音符，并可视化音频波形。</p>
+            <p class="description">此工具使用Web Audio API实时分析麦克风输入。它可显示当前音量、音高频率及对应的音符，并可视化音频波形。</p>
+            
+            <div class="permission-guide">
+                <h3>麦克风权限设置指南：</h3>
+                <ul>
+                    <li><strong>地址栏权限</strong>：点击网址左侧的挂锁图标，然后选择"网站设置"</li>
+                    <li><strong>启用麦克风</strong>：在权限区域中，将麦克风状态改为"允许"</li>
+                    <li><strong>系统设置</strong>：确保操作系统设置中麦克风访问权限已开启</li>
+                    <li><strong>物理连接</strong>：确认麦克风已正确连接到设备</li>
+                </ul>
+                <p>点击下方按钮开始，并请允许浏览器访问您的麦克风。</p>
+            </div>
         </header>
+        
+        <div class="error-message" id="errorDisplay">
+            无法访问麦克风：请检查浏览器设置并确认已授予麦克风权限
+        </div>
         
         <div class="controls">
             <button id="micButton">启动麦克风</button>
+            <div class="mic-status">
+                <span>麦克风状态：</span>
+                <div id="micStatus" class="status-indicator"></div>
+                <span id="micStatusText">未启用</span>
+            </div>
         </div>
         
-        <div class="visualizer">
-            <canvas id="waveCanvas"></canvas>
+        <div class="visualizer-container">
+            <div class="visualizer">
+                <canvas id="waveCanvas"></canvas>
+                <div class="visualizer-placeholder" id="placeholderText">
+                    请点击"启动麦克风"开始音频分析
+                </div>
+            </div>
         </div>
         
         <div class="indicators">
@@ -299,7 +427,7 @@
         </div>
         
         <footer>
-            <p>使用 Web Audio API 和 Pitchfinder.js 实现 | 适用于现代浏览器</p>
+            <p>使用 Web Audio API 实现 | 适用于现代浏览器</p>
         </footer>
     </div>
     
@@ -311,15 +439,17 @@
         const pitchDisplay = document.getElementById('pitchDisplay');
         const noteDisplay = document.getElementById('noteDisplay');
         const volumeMeter = document.getElementById('volumeMeter');
+        const errorDisplay = document.getElementById('errorDisplay');
+        const micStatus = document.getElementById('micStatus');
+        const micStatusText = document.getElementById('micStatusText');
+        const placeholderText = document.getElementById('placeholderText');
         
         let audioContext;
         let analyser;
         let microphone;
-        let javascriptNode;
         let canvasCtx;
-        let detectingPitch = false;
-        let pitchDetector;
         let buffer;
+        let animationFrameId;
         
         // 音符映射表
         const NOTES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
@@ -334,6 +464,16 @@
         // 绘制音频波形
         function drawWaveform(data) {
             canvasCtx.clearRect(0, 0, waveCanvas.width, waveCanvas.height);
+            
+            // 创建渐变的背景效果
+            const gradient = canvasCtx.createLinearGradient(0, 0, waveCanvas.width, 0);
+            gradient.addColorStop(0, 'rgba(26, 42, 108, 0.7)');
+            gradient.addColorStop(0.5, 'rgba(178, 31, 31, 0.7)');
+            gradient.addColorStop(1, 'rgba(26, 42, 108, 0.7)');
+            
+            canvasCtx.fillStyle = gradient;
+            canvasCtx.fillRect(0, 0, waveCanvas.width, waveCanvas.height);
+            
             canvasCtx.lineWidth = 2;
             canvasCtx.strokeStyle = '#00c9ff';
             canvasCtx.beginPath();
@@ -378,8 +518,54 @@
             };
         }
         
+        // 音高检测算法 (YIN算法简化实现)
+        function detectPitch(float32AudioData, sampleRate) {
+            // 1. 自相关函数计算
+            const data = float32AudioData;
+            const correlation = new Array(1024).fill(0);
+            
+            for (let tau = 0; tau < Math.min(1024, data.length/2); tau++) {
+                for (let i = 0; i < data.length - tau; i++) {
+                    correlation[tau] += data[i] * data[i + tau];
+                }
+            }
+            
+            // 2. 寻找第一个谷值
+            let minTau = 0;
+            for (let tau = 5; tau < correlation.length - 1; tau++) {
+                if (correlation[tau] < correlation[tau-1] && 
+                    correlation[tau] < correlation[tau+1]) {
+                    minTau = tau;
+                    break;
+                }
+            }
+            
+            // 3. 二次插值提高精度
+            if (minTau > 0 && minTau < correlation.length - 1) {
+                const prev = correlation[minTau - 1];
+                const curr = correlation[minTau];
+                const next = correlation[minTau + 1];
+                
+                // 二次插值公式
+                const peakOffset = (next - prev) / (2 * (2 * curr - prev - next));
+                minTau += peakOffset;
+            }
+            
+            // 4. 将周期转换为频率
+            if (minTau > 0) {
+                const frequency = sampleRate / minTau;
+                
+                // 只返回人声范围内的频率
+                if (frequency > 80 && frequency < 1000) {
+                    return frequency;
+                }
+            }
+            
+            return null;
+        }
+        
         // 处理音频数据
-        function processAudio(event) {
+        function processAudio() {
             if (!analyser) return;
             
             // 获取时间域数据
@@ -403,14 +589,14 @@
             volumeMeter.style.width = `${Math.min(db, 100)}%`;
             
             // 检测音高
-            if (detectingPitch) {
+            try {
                 // 获取浮动数组数据用于音高检测
                 const floatBuffer = new Float32Array(buffer.length);
                 for (let i = 0; i < buffer.length; i++) {
                     floatBuffer[i] = (buffer[i] - 128) / 128;
                 }
                 
-                const pitch = pitchDetector(floatBuffer);
+                const pitch = detectPitch(floatBuffer, audioContext.sampleRate);
                 
                 if (pitch) {
                     // 更新音高显示
@@ -420,35 +606,136 @@
                     const note = frequencyToNote(pitch);
                     noteDisplay.textContent = note ? note.full : '-';
                 }
+            } catch (e) {
+                console.error("音高检测错误:", e);
             }
             
             // 继续处理音频
-            if (audioContext) {
-                requestAnimationFrame(() => processAudio(event));
+            animationFrameId = requestAnimationFrame(processAudio);
+        }
+        
+        // 停止音频处理
+        function stopAudioProcessing() {
+            if (animationFrameId) {
+                cancelAnimationFrame(animationFrameId);
             }
+            
+            if (microphone) {
+                microphone.disconnect();
+                microphone = null;
+            }
+            
+            if (analyser) {
+                analyser.disconnect();
+                analyser = null;
+            }
+            
+            if (audioContext) {
+                audioContext.close().catch(console.error);
+                audioContext = null;
+            }
+            
+            // 清除视觉元素
+            if (canvasCtx) {
+                canvasCtx.clearRect(0, 0, waveCanvas.width, waveCanvas.height);
+            }
+            placeholderText.style.display = 'block';
+        }
+        
+        // 显示权限错误
+        function showPermissionError(errorMessage) {
+            errorDisplay.textContent = `无法访问麦克风：${errorMessage || '请检查浏览器设置并确认已授予麦克风权限'}`;
+            errorDisplay.style.display = 'block';
+            
+            micStatusText.textContent = '未启用';
+            micStatus.classList.remove('active');
+        }
+        
+        // 更新UI状态
+        function updateUIStatus(enabled) {
+            if (enabled) {
+                micButton.textContent = '停止分析';
+                micButton.classList.add('enabled');
+                micStatus.classList.add('active');
+                micStatusText.textContent = '启用中';
+                placeholderText.style.display = 'none';
+                errorDisplay.style.display = 'none';
+            } else {
+                micButton.textContent = '启动麦克风';
+                micButton.classList.remove('enabled');
+                micStatus.classList.remove('active');
+                micStatusText.textContent = '未启用';
+                placeholderText.style.display = 'block';
+            }
+            
+            micButton.disabled = false;
+        }
+        
+        // 浏览器兼容性处理
+        function getMediaDevices() {
+            return navigator.mediaDevices || 
+                   navigator.webkitMediaDevices || 
+                   navigator.mozMediaDevices || 
+                   navigator.msMediaDevices;
+        }
+        
+        // getUserMedia兼容性处理
+        function getUserMedia(constraints) {
+            const mediaDevices = getMediaDevices();
+            
+            if (mediaDevices && mediaDevices.getUserMedia) {
+                return mediaDevices.getUserMedia(constraints);
+            }
+            
+            const legacyGetUserMedia = 
+                navigator.getUserMedia ||
+                navigator.webkitGetUserMedia ||
+                navigator.mozGetUserMedia ||
+                navigator.msGetUserMedia;
+            
+            if (!legacyGetUserMedia) {
+                return Promise.reject(new Error('浏览器不支持getUserMedia'));
+            }
+            
+            return new Promise((resolve, reject) => {
+                legacyGetUserMedia.call(navigator, constraints, resolve, reject);
+            });
         }
         
         // 开始音频分析
         async function startAudioAnalysis() {
             try {
-                // 请求麦克风权限
-                const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+                // 检查浏览器支持
+                if (!getMediaDevices()) {
+                    throw new Error('您的浏览器不支持麦克风功能');
+                }
                 
-                // 更新按钮文本
-                micButton.textContent = '分析中...';
+                // 更新UI状态为加载中
+                micButton.textContent = '正在连接...';
                 micButton.disabled = true;
+                
+                // 请求麦克风权限
+                const stream = await getUserMedia({ 
+                    audio: {
+                        echoCancellation: false,
+                        noiseSuppression: false,
+                        autoGainControl: false
+                    },
+                    video: false 
+                });
+                
+                updateUIStatus(true);
                 
                 // 创建音频上下文
                 audioContext = new (window.AudioContext || window.webkitAudioContext)();
-                
-                // 创建音高检测器
-                pitchDetector = pitchfinder.YIN({ sampleRate: audioContext.sampleRate });
-                detectingPitch = true;
                 
                 // 创建分析节点
                 analyser = audioContext.createAnalyser();
                 analyser.fftSize = 2048;
                 buffer = new Uint8Array(analyser.fftSize);
+                
+                // 初始化Canvas
+                initCanvas();
                 
                 // 连接麦克风输入
                 microphone = audioContext.createMediaStreamSource(stream);
@@ -459,16 +746,46 @@
                 
             } catch (err) {
                 console.error('无法访问麦克风:', err);
-                alert('无法访问麦克风。请确保您已授予麦克风访问权限并重新加载页面。');
-                micButton.textContent = '启动麦克风';
-                micButton.disabled = false;
+                
+                let errorMessage = err.message || '未知错误';
+                if (err.name === 'NotAllowedError') {
+                    errorMessage = '麦克风权限被拒绝。请在浏览器设置中启用麦克风权限。';
+                } else if (err.name === 'NotFoundError') {
+                    errorMessage = '未找到麦克风设备。请确认麦克风已连接。';
+                } else if (err.name === 'NotSupportedError') {
+                    errorMessage = '您的浏览器不支持此功能';
+                }
+                
+                showPermissionError(errorMessage);
+                
+                // 恢复到初始状态
+                stopAudioProcessing();
+                updateUIStatus(false);
+            }
+        }
+        
+        // 切换麦克风状态
+        function toggleMicrophone() {
+            if (audioContext && audioContext.state === 'running') {
+                stopAudioProcessing();
+                updateUIStatus(false);
+            } else {
+                startAudioAnalysis();
             }
         }
         
         // 初始化页面
         window.addEventListener('load', function() {
-            initCanvas();
-            micButton.addEventListener('click', startAudioAnalysis);
+            // 初始化Canvas
+            if (waveCanvas) {
+                initCanvas();
+            }
+            
+            // 添加事件监听
+            if (micButton) {
+                micButton.addEventListener('click', toggleMicrophone);
+            }
+            
             window.addEventListener('resize', initCanvas);
         });
     </script>
